@@ -1,568 +1,188 @@
-from keep_alive import keep_alive
-from aiogram.types import InputMediaPhoto
+import os
 import logging
 import asyncio
 import sqlite3
+import random
+import string
+from keep_alive import keep_alive
 from dotenv import load_dotenv
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, InputMediaPhoto, ReplyKeyboardRemove
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, InputMediaPhoto
 from aiogram.fsm.state import StatesGroup, State
 from aiogram.fsm.context import FSMContext
 
+# 1. ЗАПУСК И КОНФИГ
 load_dotenv()
-
 keep_alive()
 
-db = sqlite3.connect("database.db", check_same_thread=False)
-cursor = db.cursor()
-
-# создаём таблицу один раз и нормально
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS users (
-    user_id INTEGER PRIMARY KEY,
-    balance INTEGER DEFAULT 0
-)
-""")
-
-db.commit()
-# Создаем состояние ожидания товара
-class AdminStates(StatesGroup):
-    waiting_for_product = State()
-import os
-from aiogram import Bot # или используемая вами библиотека
-
-# Бот будет автоматически брать токен из настроек Render
 TOKEN = os.getenv("BOT_TOKEN")
-# Было: ADMIN_ID = int(os.getenv("ADMIN_ID"))
-# Стало:
-ADMIN_ID_RAW = os.getenv("ADMIN_ID")
-ADMIN_ID = int(ADMIN_ID_RAW) if ADMIN_ID_RAW else 0
+ADMIN_ID = int(os.getenv("ADMIN_ID")) if os.getenv("ADMIN_ID") else 0
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
-
 logging.basicConfig(level=logging.INFO)
 
-# ====== БАЗА ======
-conn = sqlite3.connect("db.db")
-cursor = conn.cursor()
-
+# 2. БАЗА ДАННЫХ (ЕДИНАЯ)
+db = sqlite3.connect("orion_main.db", check_same_thread=False)
+cursor = db.cursor()
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS users (
-    user_id INTEGER PRIMARY KEY
+    user_id INTEGER PRIMARY KEY,
+    balance INTEGER DEFAULT 0,
+    deals INTEGER DEFAULT 0,
+    bought_items INTEGER DEFAULT 0,
+    spent INTEGER DEFAULT 0
 )
 """)
+db.commit()
 
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS orders (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER,
-    qty INTEGER,
-    price INTEGER,
-    code TEXT
-)
-""")
+# 3. СОСТОЯНИЯ (FSM)
+class ShopStates(StatesGroup):
+    waiting_for_screenshot = State()
+    waiting_for_product_data = State() # Для админа
 
-conn.commit()
+# 4. ТЕКСТЫ И ССЫЛКИ
+IMG_MAIN = "https://i.postimg.cc/TYVPYxDW/photo-2026-05-03-14-34-19.jpg"
+IMG_BUY = "https://i.postimg.cc/wT8ygtJR/photo-2026-05-03-14-34-29.jpg"
+IMG_PAY = "https://i.postimg.cc/ZYDHcxGz/photo-2026-05-05-18-20-59.jpg"
+IMG_CRYPTO = "https://i.postimg.cc/dVggxKpg/photo-2026-05-05-18-18-51.jpg"
+IMG_SUPPORT = "https://i.postimg.cc/bNsRK6D4/photo-2026-05-03-07-32-45-(8).jpg"
+IMG_REF = "https://i.postimg.cc/KcfLqV7c/photo-2026-05-03-07-32-45-(7).jpg"
+IMG_PROFILE = "https://i.postimg.cc/L6YYMtnX/photo.jpg"
 
-
-def generate_code():
-    return ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
-
-
-# ====== КРИПТА ТЕКСТ ======
-crypto_text = (
-    "💳 Реквизиты для оплаты (Криптовалюта):
-\n\n"
-
-    "USDT (TRC20):\n"
-    "TGTSyUEGaK7GAkpACNDi46x47zvr5y1VuX\n\n"
-
-    "USDT (BEP20):\n"
-    "0xd06e78f1abf5c33b309cd5b86bca8167ca8d3d6c\n\n"
-
-    "ETH (ERC20):\n"
-    "0xd06e78f1abf5c33b309cd5b86bca8167ca8d3d6c\n\n"
-
-    "BTC:\n"
-    "15oU1drW3g89P33WZfEau4ow6jWxD4i397\n\n"
-
-    "LTC:\n"
-    "LeTmNWe2h9wJm4w7yUCFyeA3xz4BvrtB4W\n\n"
-
-    "TON:\n"
-    "UQCvwsHXlQ089m4Ei5RL-GYP19mPIQS5dq24_3FLKWTJE0Ov\n\n"
-
-    "USDT (TON):\n"
-    "UQCvwsHXlQ089m4Ei5RL-GYP19mPIQS5dq24_3FLKWTJE0Ov\n\n"
+CRYPTO_REQUISITES = (
+    "<b>💳 Реквизиты для оплаты:</b>\n\n"
+    "<b>USDT (TRC20):</b> <code>TGTSyUEGaK7GAkpACNDi46x47zvr5y1VuX</code>\n"
+    "<b>TON:</b> <code>UQCvwsHXlQ089m4Ei5RL-GYP19mPIQS5dq24_3FLKWTJE0Ov</code>\n"
+    "<b>BTC:</b> <code>15oU1drW3g89P33WZfEau4ow6jWxD4i397</code>\n\n"
+    "<i>После оплаты обязательно пришлите скриншот!</i>"
 )
 
-
-# ====== МЕНЮ ======
-def main_menu():
-    kb = InlineKeyboardMarkup(inline_keyboard=[
+# 5. КЛАВИАТУРЫ
+def kb_main():
+    return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🛒 Купить аккаунты", callback_data="buy")],
-        [InlineKeyboardButton(text="🆘 Поддержка", callback_data="support")],
-        [InlineKeyboardButton(text="💰 Реферальная система", callback_data="ref")],
-        [InlineKeyboardButton(text="👤 Профиль", callback_data="profile")]
+        [InlineKeyboardButton(text="👤 Профиль", callback_data="profile"), InlineKeyboardButton(text="💰 Рефералка", callback_data="ref")],
+        [InlineKeyboardButton(text="🆘 Поддержка", callback_data="support")]
     ])
-    return kb
 
-# ====== СТАРТ ======
+def kb_back():
+    return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_main")]])
+
+# 6. ХЕНДЛЕРЫ МЕНЮ
 @dp.message(Command("start"))
-async def start_command(message: types.Message):
-    await message.answer_photo(
-        "https://i.postimg.cc/TYVPYxDW/photo-2026-05-03-14-34-19.jpg",
-        caption="""🎉 Добро пожаловать в Orion Seller Bot! ✨
-🌟 Давно хотел приобрести качественные Stripe аккаунты с балансом?
-💫 Тебе определенно к нам! ⭐️
-🎲 Ниже располагается меню, ознакамливайся!
-───────────────────""",
-        reply_markup=main_menu()
-    )
-@dp.message(Command("done"))
-async def done_cmd(message: types.Message):
-    if message.from_user.id != ADMIN_ID:
-        return
+async def start(message: types.Message):
+    cursor.execute("INSERT OR IGNORE INTO users (user_id) VALUES (?)", (message.from_user.id,))
+    db.commit()
+    await message.answer_photo(IMG_MAIN, caption="🎉 <b>Добро пожаловать в Orion Seller Bot!</b>\n\n💫 Лучшие Stripe аккаунты здесь.\n🎲 Используй меню ниже:", reply_markup=kb_main(), parse_mode="HTML")
 
-    try:
-        args = message.text.split()
-        if len(args) < 3:
-            await message.answer("Пиши: /done ID кол-во")
-            return
+@dp.callback_query(F.data == "back_to_main")
+async def back_main(call: types.CallbackQuery, state: FSMContext):
+    await state.clear()
+    await call.message.edit_media(InputMediaPhoto(media=IMG_MAIN, caption="🎉 <b>Главное меню Orion Seller</b>"), reply_markup=kb_main())
 
-        target_id = int(args[1])
-        amount = int(args[2])
-
-        # создаём юзера если нет
-        cursor.execute(
-            "INSERT OR IGNORE INTO users (user_id, balance) VALUES (?, 0)",
-            (target_id,)
-        )
-
-        # начисляем баланс
-        cursor.execute(
-            "UPDATE users SET balance = balance + ? WHERE user_id = ?",
-            (amount, target_id)
-        )
-
-        db.commit()
-
-        await message.answer(f"✅ Зачислено {amount}$ юзеру {target_id}")
-
-    except Exception as e:
-        await message.answer(f"Ошибка: {e}")
-# ====== ПРОФИЛЬ ======
-@dp.callback_query(F.data == "profile")
-async def profile_handler(call: types.CallbackQuery):
-    await call.answer()
-    user_id = call.from_user.id
-
-    try:
-        # создаём пользователя если его нет
-        cursor.execute(
-            "INSERT OR IGNORE INTO users (user_id, balance) VALUES (?, 0)",
-            (user_id,)
-        )
-        db.commit()
-
-        # баланс
-        cursor.execute(
-            "SELECT balance FROM users WHERE user_id = ?",
-            (user_id,)
-        )
-        res = cursor.fetchone()
-        current_balance = res[0] if res else 0
-
-        # сделки
-        try:
-            cursor.execute(
-                "SELECT COUNT(*), SUM(qty), SUM(price) FROM orders WHERE user_id=?",
-                (user_id,)
-            )
-            data = cursor.fetchone()
-            deals = data[0] or 0
-            total_qty = data[1] or 0
-            total_spent = data[2] or 0
-        except:
-            deals = total_qty = total_spent = 0
-
-        text = (
-            f"👤 Ваш профиль:\n\n"
-            f"🆔 ID: {user_id}\n"
-            f"💰 Баланс: {current_balance}$\n"
-            f"🤝 Сделок: {deals}\n"
-            f"🛒 Куплено: {total_qty}\n"
-            f"💳 Потрачено: {total_spent}$"
-        )
-
-        kb = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="⬅️ Назад", callback_data="main_menu")]
-        ])
-
-        media = InputMediaPhoto(
-            media="https://i.postimg.cc/L6YYMtnX/photo.jpg",
-            caption=text
-        )
-
-        await call.message.edit_media(
-            media=media,
-            reply_markup=kb
-        )
-
-    except Exception as e:
-        await call.message.answer(f"⚠️ Ошибка профиля: {e}")
-
-# ====== ЦЕНА ======
-def get_price(qty):
-    if 1 <= qty <= 10:
-        return qty * 10
-    elif 11 <= qty <= 20:
-        return qty * 9
-    elif 21 <= qty <= 30:
-        return qty * 8
-
-
-# ====== ПОКУПКА ======
-# ====== КУПИТЬ (ОБРАБОТКА СО СМЕНОЙ ФОТО) ======
-from aiogram.fsm.context import FSMContext # Убедись, что этот импорт есть вверху
-
-# ====== ПОКУПКА ======
+# 7. РАЗДЕЛ ПОКУПКИ
 @dp.callback_query(F.data == "buy")
-async def buy_handler(call: types.CallbackQuery, state: FSMContext):
-    await call.answer()
-    
-    # Очищаем старые данные перед новой покупкой
-    await state.clear() 
-    
-    packs = [1, 3, 5, 10, 20, 30]
-    buttons = []
-    for p in packs:
-        buttons.append([InlineKeyboardButton(text=f"💎 Пак: {p} шт.", callback_data=f"pack_{p}")])
-    
-    buttons.append([InlineKeyboardButton(text="⬅️ ⱠɆ₣₮ (Назад)", callback_data="back")])
-    kb = InlineKeyboardMarkup(inline_keyboard=buttons)
-    
-    new_media = InputMediaPhoto(
-        media="https://i.postimg.cc/wT8ygtJR/photo-2026-05-03-14-34-29.jpg", 
-        caption=(
-            """🛒 Шаг 1 из 3... Выбор количества для покупки
+async def buy_packs(call: types.CallbackQuery):
+    packs = [1, 5, 10, 20, 30, 50]
+    buttons = [[InlineKeyboardButton(text=f"💎 Пак: {p} шт.", callback_data=f"order_{p}")] for p in packs]
+    buttons.append([InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_main")])
+    await call.message.edit_media(InputMediaPhoto(media=IMG_BUY, caption="🛒 <b>Выбери количество аккаунтов:</b>\n\n1-20 шт → 10$\n21-50 шт → 9$"), reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons))
 
-🌟 Решил купить аккаунты? Ты на верном пути! ✈️
-
-🎯 Наши преимущества:
-✅ Гарантия возврата в случаи невалидности 🔮
-✅ Платежные системы высшего уровня 💾
-✅ Удобные способы оплаты 📥
-✅ Быстрая тех поддержка 📞
-
-💎 Прайс лист на аккаунты:
-💎 1-20 шт → 10$ за аккаунт
-🚀 21-30 шт → 9$ за аккаунт
-🔥 31-50 шт → 8$ за аккаунт
-
-🎯 Выбери готовый пак или укажи свое количество!"""
-        ),
-        parse_mode="HTML"
-    )
-    
-    await call.message.edit_media(media=new_media, reply_markup=kb)
-
-# ====== ВЫБОР ПАКА ======
-@dp.callback_query(F.data.startswith("pack_"))
-async def pack_handler(call: types.CallbackQuery, state: FSMContext):
-    await call.answer()
-    
+@dp.callback_query(F.data.startswith("order_"))
+async def choose_pay(call: types.CallbackQuery, state: FSMContext):
     qty = int(call.data.split("_")[1])
-    price = get_price(qty)
-    user = call.from_user
-
-    # Запоминаем данные в память бота
-    await state.update_data(ordered_quantity=qty, final_price=price)
-
-    # ОТПРАВЛЯЕМ УВЕДОМЛЕНИЕ ТЕБЕ (АДМИНУ)
-    await bot.send_message(
-        ADMIN_ID, 
-        f"🔔 <b>НОВЫЙ ЗАКАЗ</b>\n\n"
-        f"👤 Клиент: @{user.username} (ID: {user.id})\n"
-        f"📦 Пак: <b>{qty} шт.</b>\n"
-        f"💰 Цена: <b>{price}$</b>",
-        parse_mode="HTML"
-    )
-
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="💳 Получить реквизиты", url="https://t.me/orion_seller")],
-        [InlineKeyboardButton(text="₿ Оплата криптовалютой", callback_data=f"crypto_{qty}")],
-        [InlineKeyboardButton(text="⬅️ Назад к пакам", callback_data="buy")]
-    ])
-
-    new_media = InputMediaPhoto(
-        media="https://i.postimg.cc/ZYDHcxGz/photo-2026-05-05-18-20-59.jpg", 
-        caption=(
-            f"📦 <b>ДЕТАЛИ ЗАКАЗА</b>\n\n"
-            f"🛒 Товар: <code>Stripe Accounts</code>\n"
-            f"🔢 Количество: <b>{qty} шт.</b>\n"
-            f"💰 К оплате: <b>{price}$</b>\n\n"
-            f"<i>Напиши админу для получения реквизитов. После выдачи товара ваш профиль обновится автоматически.</i>"
-        ),
-        parse_mode="HTML"
-    )
-
-    await call.message.edit_media(media=new_media, reply_markup=kb)
-# ====== ОБНОВЛЕНИЕ ПРОФИЛЯ (ПОСЛЕ ПОДТВЕРЖДЕНИЯ) ======
-@dp.callback_query(F.data == "check_payment")
-async def check_payment_handler(call: types.CallbackQuery, state: FSMContext):
-    # Достаем данные из памяти
-    user_data = await state.get_data()
-    qty = user_data.get("ordered_quantity", 0)
-    price = user_data.get("final_price", 0)
+    price = qty * 10 if qty <= 20 else qty * 9
+    await state.update_data(qty=qty, price=price)
     
-    if qty == 0:
-        await call.answer("Ошибка: данные заказа потеряны. Начни сначала.", show_alert=True)
-        return
-
-    # ТУТ ДОЛЖНА БЫТЬ ТВОЯ ПРОВЕРКА ОПЛАТЫ (Stripe API или ручная)
-    # Если оплата подтверждена (имитация):
-    payment_confirmed = True 
-
-    if payment_confirmed:
-        # ОБНОВЛЯЕМ БАЗУ ДАННЫХ (замени на свои функции)
-        # db.update_user_profile(user_id=call.from_user.id, add_deals=1, add_qty=qty)
-        
-        await call.message.answer(
-            f"🥳 <b>Успешная покупка!</b>\n"
-            f"В профиль добавлено сделок: 1\n"
-            f"Куплено аккаунтов: {qty} шт.\n"
-            f"Списано: {price}$"
-        )
-        await state.clear() # Очищаем память после успеха
-    else:
-        await call.answer("Оплата еще не поступила!", show_alert=True)
-
-# ====== КРИПТА ======
-# ====== ОПЛАТА КРИПТОЙ (ИТОГОВЫЙ БЛОК) ======
-@dp.callback_query(F.data.startswith("crypto_"))
-async def crypto(call: types.CallbackQuery):
-    await call.answer()
-    
-    # Вытаскиваем количество из даты (например, crypto_5)
-    qty = call.data.split("_")[1] if "_" in call.data else "1"
-
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="✅ Я оплатил", callback_data=f"paid_{qty}")],
+        [InlineKeyboardButton(text="💳 Картой (в ЛС)", url="https://t.me/orion_seller")],
+        [InlineKeyboardButton(text="₿ Криптовалютой", callback_data="pay_crypto")],
         [InlineKeyboardButton(text="⬅️ Назад", callback_data="buy")]
     ])
+    await call.message.edit_media(InputMediaPhoto(media=IMG_PAY, caption=f"📦 <b>Заказ:</b> {qty} шт.\n💰 <b>Итого:</b> {price}$"), reply_markup=kb)
 
-    # Смена контента на реквизиты
-    await call.message.edit_media(
-        media=InputMediaPhoto(
-            media="https://i.postimg.cc/dVggxKpg/photo-2026-05-05-18-18-51.jpg", 
-            caption=crypto_text, 
-            parse_mode="HTML"
-        ),
-        reply_markup=kb
-    )
-
-# ====== НАЖАТИЕ "Я ОПЛАТИЛ" (МЕНЯЕМ ТОЛЬКО ТЕКСТ) ======
-@dp.callback_query(F.data.startswith("paid_"))
-async def process_paid(call: types.CallbackQuery):
-    await call.answer()
-    
-    # Кнопка возврата, если юзер передумал
-    cancel_kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="⬅️ Отмена", callback_data="buy")]
+@dp.callback_query(F.data == "pay_crypto")
+async def pay_crypto(call: types.CallbackQuery):
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Я оплатил", callback_data="confirm_pay")],
+        [InlineKeyboardButton(text="⬅️ Назад", callback_data="buy")]
     ])
+    await call.message.edit_media(InputMediaPhoto(media=IMG_CRYPTO, caption=CRYPTO_REQUISITES), reply_markup=kb)
 
-    # МЕНЯЕМ ТОЛЬКО CAPTION (КАРТИНКА НЕ ТРОГАЕТСЯ)
-    await call.message.edit_caption(
-        caption="📸 <b>ОТПРАВЬТЕ СКРИНШОТ ОПЛАТЫ</b>\n\nПришлите фото чека прямо в этот чат. Я передам его администратору на проверку.",
-        parse_mode="HTML",
-        reply_markup=cancel_kb
-    )
-@dp.message(F.photo)
-async def handle_screenshot(message: types.Message):
-    if message.from_user.id == ADMIN_ID: return
-    await message.answer("✅ Чек отправлен админу!")
-    admin_kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="✅ Одобрить", callback_data=f"adm_ok_{message.from_user.id}")],
+@dp.callback_query(F.data == "confirm_pay")
+async def wait_scr(call: types.CallbackQuery, state: FSMContext):
+    await state.set_state(ShopStates.waiting_for_screenshot)
+    await call.message.edit_caption(caption="📸 <b>Пришлите скриншот чека оплаты в этот чат:</b>", reply_markup=kb_back())
+
+# 8. ОБРАБОТКА СКРИНШОТА И АДМИНКА
+@dp.message(ShopStates.waiting_for_screenshot, F.photo)
+async def get_screenshot(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    qty, price = data.get('qty'), data.get('price')
+    
+    await message.answer("✅ <b>Чек принят!</b> Ожидайте проверки админом.", parse_mode="HTML")
+    
+    kb_adm = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Одобрить", callback_data=f"adm_ok_{message.from_user.id}_{qty}_{price}")],
         [InlineKeyboardButton(text="❌ Отклонить", callback_data=f"adm_no_{message.from_user.id}")]
     ])
-    await message.bot.send_photo(chat_id=ADMIN_ID, photo=message.photo[-1].file_id, 
-                                 caption=f"Чек от @{message.from_user.username}", reply_markup=admin_kb)
-# ====== ПОДДЕРЖКА ======
-@dp.callback_query(F.data == "support")
-async def support(call: types.CallbackQuery):
-    await call.answer()
-    
-    # 1. СОЗДАЕМ ОБЪЕКТ ДЛЯ СМЕНЫ ФОТО И ТЕКСТА
-    new_media = InputMediaPhoto(
-        media="https://i.postimg.cc/bNsRK6D4/photo-2026-05-03-07-32-45-(8).jpg", # Вставь сюда ссылку на картинку
-        caption=(
-            "🛎 <b>НУЖНА ПОМОЩЬ? МЫ НА СВЯЗИ!</b>\n\n"
-            "🔹 Менеджер поддержки: @orion_seller\n\n"
-            "📌 <b>Правила обращения:</b>\n"
-            "✅ Описывай проблему сразу в одном сообщении\n"
-            "✅ Прикрепляй скриншот чека, если вопрос по оплате\n"
-            "✅ Будь вежлив, и мы решим всё максимально быстро!\n\n"
-            "<i>Просто нажми кнопку ниже, чтобы перейти в диалог.</i>"
-        ),
-        parse_mode="HTML"
-    )
+    await bot.send_photo(ADMIN_ID, message.photo[-1].file_id, 
+                         caption=f"💰 <b>НОВЫЙ ЧЕК</b>\nЮзер: @{message.from_user.username}\nID: {message.from_user.id}\nЗаказ: {qty} шт ({price}$)", 
+                         reply_markup=kb_adm, parse_mode="HTML")
+    await state.clear()
 
-    # 2. КНОПКИ
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="✉️ Написать в поддержку", url="https://t.me/orion_seller")],
-        [InlineKeyboardButton(text="⬅️ Назад", callback_data="back")]
-    ])
-
-    # 3. МЕНЯЕМ ВСЁ СООБЩЕНИЕ
-    await call.message.edit_media(
-        media=new_media,
-        reply_markup=kb
-    )
-
-# ====== РЕФЕРАЛКА ======
-@dp.callback_query(F.data == "ref")
-async def ref_handler(call: types.CallbackQuery):
-    await call.answer()
-    
-    # 1. ПОДГОТОВКА НОВОГО КОНТЕНТА (ФОТО + ТЕКСТ)
-    # Замени ССЫЛКА_НА_ФОТО_РЕФЕРАЛКИ на свою прямую ссылку (jpg/png)
-    new_media = InputMediaPhoto(
-        media="https://i.postimg.cc/KcfLqV7c/photo-2026-05-03-07-32-45-(7).jpg", 
-        caption=(
-            "💰 <b>РЕФЕРАЛЬНАЯ СИСТЕМА | ORION TEAM</b>\n\n"
-            "Приглашай друзей и получай <b>10%</b> от каждой их покупки прямо на свой баланс!\n\n"
-            "📍 <b>Как это работает?</b>\n"
-            "1. Напиши нам в поддержку по кнопке ниже.\n"
-            "2. Получи свою уникальную ссылку.\n"
-            "3. Скидывай её друзьям или пости в каналах.\n\n"
-            "<i>Деньги зачисляются автоматически после каждой успешной сделки твоего реферала!</i>"
-        ),
-        parse_mode="HTML"
-    )
-
-    # 2. КНОПКИ РАЗДЕЛА
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        # Ссылка на твой профиль @dmitryN1
-        [InlineKeyboardButton(text="🔗 Получить ссылку (ЛС)", url="https://t.me/orion_seller")],
-        [InlineKeyboardButton(text="⬅️ Назад в меню", callback_data="back")]
-    ])
-    
-    # 3. МАГИЯ СМЕНЫ: меняем старое фото/текст на новое
-    await call.message.edit_media(
-        media=new_media,
-        reply_markup=kb
-    )
-# ====== НАЗАД ======
-@dp.callback_query(lambda c: c.data == "back")
-async def back(call: types.CallbackQuery):
-    await call.answer()
-    
-    # 1. Создаем объект медиа с НОВОЙ картинкой и текстом
-    new_media = InputMediaPhoto(
-        media="https://i.postimg.cc/TYVPYxDW/photo-2026-05-03-14-34-19.jpg", 
-        caption=(
-            "🎉 <b>Добро пожаловать в Orion Seller Bot!</b> ✨\n"
-            "🌟 Давно хотел приобрести качественные Stripe аккаунты с балансом?\n"
-            "💫 Тебе определенно к нам! ⭐\n"
-            "🎲 Ниже располагается меню, ознакамливайся!"
-        ),
-        parse_mode="HTML"
-    )
-    
-    # 2. Меняем всё сообщение целиком (фото + текст + кнопки)
-    await call.message.edit_media(
-        media=new_media,
-        reply_markup=main_menu()
-    )
-    )
-# Тут все твои функции (профиль, рефка, поддержка и т.д.)
-
-# Вставляем логику кнопок админа
-# ====== ОБНОВЛЕННАЯ АДМИНКА (РУЧНАЯ ВЫДАЧА) ======
 @dp.callback_query(F.data.startswith("adm_"))
-async def admin_control(call: types.CallbackQuery, state: FSMContext):
-    data = call.data.split("_")
-    action, user_id = data[1], int(data[2])
-
+async def admin_action(call: types.CallbackQuery, state: FSMContext):
+    params = call.data.split("_")
+    action, user_id = params[1], int(params[2])
+    
     if action == "ok":
-        # Запоминаем ID счастливчика
-        await state.update_data(target_user_id=user_id)
-        # Включаем режим ожидания текста от тебя
-        await state.set_state(AdminStates.waiting_for_product)
-        
-        await call.message.answer(f"⌨️ <b>Король писбеов, введи товар для юзера</b> <code>{user_id}</code>:\n(Просто отправь текст с данными аккаунта)")
-        await call.answer()
+        qty, price = int(params[3]), int(params[4])
+        await state.update_data(target=user_id, q=qty, p=price)
+        await state.set_state(ShopStates.waiting_for_product_data)
+        await call.message.answer(f"⌨️ <b>Введи товар (данные аккаунтов) для {user_id}:</b>")
+    else:
+        await bot.send_message(user_id, "❌ <b>Ваша оплата отклонена.</b> Свяжитесь с поддержкой.")
+        await call.message.edit_caption(caption=call.message.caption + "\n\n❌ ОТКЛОНЕНО")
+    await call.answer()
 
-    elif action == "no":
-        try:
-            await call.bot.send_message(user_id, "❌ <b>Оплата отклонена.</b>\nСвяжитесь с @dmitryN1", parse_mode="HTML")
-            await call.message.edit_caption(caption=call.message.caption + "\n\n❌ <b>ОТКЛОНЕНО</b>")
-        except:
-            await call.answer("Юзер недоступен")
-        await call.answer()
-
-# ЭТОТ ХЕНДЛЕР ПЕРЕХВАТИТ ТВОЙ ТЕКСТ И ОТПРАВИТ ЮЗЕРУ
-@dp.message(AdminStates.waiting_for_product, F.from_user.id == ADMIN_ID)
-async def send_product_manually(message: types.Message, state: FSMContext):
-    user_data = await state.get_data()
-    user_id = user_data.get("target_user_id")
+@dp.message(ShopStates.waiting_for_product_data, F.from_user.id == ADMIN_ID)
+async def send_product(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    uid, q, p = data['target'], data['q'], data['p']
     
-    try:
-        # Пересылаем твой текст юзеру в красивой обертке
-        await message.bot.send_message(
-            user_id, 
-            f"💎 <b>ВАШ ТОВАР ГОТОВ!</b>\n\n<code>{message.text}</code>\n\nСпасибо за покупку в ORION TEAM!", 
-            parse_mode="HTML"
-        )
-        await message.answer(f"✅ Товар успешно улетел юзеру <code>{user_id}</code>")
-    except Exception as e:
-        await message.answer(f"❌ Не вышло отправить: {e}")
+    # Обновляем БД
+    cursor.execute("UPDATE users SET deals = deals + 1, bought_items = bought_items + ?, spent = spent + ? WHERE user_id = ?", (q, p, uid))
+    db.commit()
     
-    await state.clear() # Выходим из режима админки
+    await bot.send_message(uid, f"💎 <b>ВАШ ТОВАР:</b>\n\n<code>{message.text}</code>\n\nСтатистика в профиле обновлена!", parse_mode="HTML")
+    await message.answer(f"✅ Товар отправлен юзеру {uid}, статистика обновлена.")
+    await state.clear()
 
-# Команда для тебя: /done ID_КЛИЕНТА КОЛ-ВО
-# Пример: /done 123456789 10
-@dp.message(Command("done"))
-async def complete_order(message: types.Message):
-    if message.from_user.id != ADMIN_ID:
-        return
+# 9. ПРОФИЛЬ, РЕФКА, САППОРТ
+@dp.callback_query(F.data == "profile")
+async def view_profile(call: types.CallbackQuery):
+    cursor.execute("SELECT deals, bought_items, spent FROM users WHERE user_id = ?", (call.from_user.id,))
+    res = cursor.fetchone()
+    text = f"👤 <b>Профиль:</b>\n🆔 ID: <code>{call.from_user.id}</code>\n🤝 Сделок: {res[0]}\n🛒 Куплено: {res[1]} шт.\n💳 Потрачено: {res[2]}$"
+    await call.message.edit_media(InputMediaPhoto(media=IMG_PROFILE, caption=text), reply_markup=kb_back())
 
-    try:
-        args = message.text.split()
-        customer_id = int(args[1])
-        quantity = int(args[2])
+@dp.callback_query(F.data == "support")
+async def view_support(call: types.CallbackQuery):
+    await call.message.edit_media(InputMediaPhoto(media=IMG_SUPPORT, caption="🆘 <b>Поддержка Orion Team</b>\n\nМенеджер: @orion_seller\nПиши по любым вопросам!"), 
+                                  reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="✉️ Написать", url="https://t.me/orion_seller")],[InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_main")]]))
 
-        # ОБНОВЛЯЕМ БАЗУ (ORION TEAM DB)
-        # Здесь мы стучимся в твою БД и добавляем +1 сделку и +кол-во
-        await db.update_user_stats(
-            user_id=customer_id, 
-            add_deals=1, 
-            add_items=quantity
-        )
+@dp.callback_query(F.data == "ref")
+async def view_ref(call: types.CallbackQuery):
+    await call.message.edit_media(InputMediaPhoto(media=IMG_REF, caption="💰 <b>Реферальная система</b>\n\nПолучай 10% с покупок друзей!\nЧтобы получить личную ссылку, напиши менеджеру."), 
+                                  reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🔗 Получить ссылку", url="https://t.me/orion_seller")],[InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_main")]]))
 
-        await message.answer(f"✅ Сделка для {customer_id} записана в профиль!")
-        await bot.send_message(customer_id, f"🎉 Покупка завершена! В ваш профиль добавлена сделка и {quantity} шт. товара.")
-        
-    except Exception as e:
-        await message.answer(f"Ошибка: пиши /done ID кол-во\n{e}")
-# ====== ИТОГОВЫЙ ЗАПУСК ======
+# 10. ЗАПУСК
 async def main():
-    print("🚀 ORION TEAM BOT ЗАПУСКАЕТСЯ...")
-    try:
-        # Очищаем очередь обновлений, чтобы бот не тупил после включения
-        await bot.delete_webhook(drop_pending_updates=True)
-        # Запускаем прослушивание серверов Telegram
-        await dp.start_polling(bot)
-    except Exception as e:
-        print(f"⚠️ Ошибка при работе: {e}")
-    finally:
-        await bot.session.close()
+    await bot.delete_webhook(drop_pending_updates=True)
+    await dp.start_polling(bot)
 
 if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        print("❌ Бот выключен.")
+    asyncio.run(main())
