@@ -1,19 +1,19 @@
+from keep_alive import keep_alive
+
 from aiogram.types import InputMediaPhoto
 import logging
 import asyncio
 import sqlite3
+from dotenv import load_dotenv
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, InputMediaPhoto, ReplyKeyboardRemove
 from aiogram.fsm.state import StatesGroup, State
 from aiogram.fsm.context import FSMContext
-from aiogram.filters import Command
 
-# 1. Коннектимся к базе
-db = sqlite3.connect("database.db", check_same_thread=False)
-cursor = db.cursor()
+load_dotenv()
 
-import sqlite3
+keep_alive()
 
 db = sqlite3.connect("database.db", check_same_thread=False)
 cursor = db.cursor()
@@ -27,8 +27,6 @@ CREATE TABLE IF NOT EXISTS users (
 """)
 
 db.commit()
-
-db.commit()
 # Создаем состояние ожидания товара
 class AdminStates(StatesGroup):
     waiting_for_product = State()
@@ -37,8 +35,10 @@ from aiogram import Bot # или используемая вами библио�
 
 # Бот будет автоматически брать токен из настроек Render
 TOKEN = os.getenv("BOT_TOKEN")
-
-ADMIN_ID = int(os.getenv("ADMIN_ID"))
+# Было: ADMIN_ID = int(os.getenv("ADMIN_ID"))
+# Стало:
+ADMIN_ID_RAW = os.getenv("ADMIN_ID")
+ADMIN_ID = int(ADMIN_ID_RAW) if ADMIN_ID_RAW else 0
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
