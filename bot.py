@@ -11,6 +11,17 @@ from aiogram.filters import Command
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, InputMediaPhoto
 from aiogram.fsm.state import StatesGroup, State
 from aiogram.fsm.context import FSMContext
+from aiogram.types import BotCommand, BotCommandScopeDefault
+
+async def set_main_menu(bot: Bot):
+    main_menu_commands = [
+        BotCommand(command='/start', description='Старт'),
+        BotCommand(command='/buy', description='Купить аккаунты'),
+        BotCommand(command='/support', description='Поддержка'),
+        BotCommand(command='/ref', description='Реферальная система'),
+        BotCommand(command='/deals', description='Профиль')
+    ]
+    await bot.set_my_commands(main_menu_commands, scope=BotCommandScopeDefault())
 
 # 1. ЗАПУСК И КОНФИГ
 load_dotenv()
@@ -53,10 +64,47 @@ IMG_PROFILE = "https://i.postimg.cc/L6YYMtnX/photo.jpg"
 
 CRYPTO_REQUISITES = (
     "<b>💳 Реквизиты для оплаты:</b>\n\n"
-    "<b>USDT (TRC20):</b> <code>TGTSyUEGaK7GAkpACNDi46x47zvr5y1VuX</code>\n"
-    "<b>TON:</b> <code>UQCvwsHXlQ089m4Ei5RL-GYP19mPIQS5dq24_3FLKWTJE0Ov</code>\n"
-    "<b>BTC:</b> <code>15oU1drW3g89P33WZfEau4ow6jWxD4i397</code>\n\n"
-    "<i>После оплаты обязательно пришлите скриншот!</i>"
+    
+    "USDT (TRC20):\n"
+
+    "TGTSyUEGaK7GAkpACNDi46x47zvr5y1VuX\n\n"
+
+
+
+    "USDT (BEP20):\n"
+
+    "0xd06e78f1abf5c33b309cd5b86bca8167ca8d3d6c\n\n"
+
+
+
+    "ETH (ERC20):\n"
+
+    "0xd06e78f1abf5c33b309cd5b86bca8167ca8d3d6c\n\n"
+
+
+
+    "BTC:\n"
+
+    "15oU1drW3g89P33WZfEau4ow6jWxD4i397\n\n"
+
+
+
+    "LTC:\n"
+
+    "LeTmNWe2h9wJm4w7yUCFyeA3xz4BvrtB4W\n\n"
+
+
+
+    "TON:\n"
+
+    "UQCvwsHXlQ089m4Ei5RL-GYP19mPIQS5dq24_3FLKWTJE0Ov\n\n"
+
+
+
+    "USDT (TON):\n"
+
+    "UQCvwsHXlQ089m4Ei5RL-GYP19mPIQS5dq24_3FLKWTJE0Ov\n\n"
+
 )
 
 # 5. КЛАВИАТУРЫ
@@ -75,12 +123,20 @@ def kb_back():
 async def start(message: types.Message):
     cursor.execute("INSERT OR IGNORE INTO users (user_id) VALUES (?)", (message.from_user.id,))
     db.commit()
-    await message.answer_photo(IMG_MAIN, caption="🎉 <b>Добро пожаловать в Orion Seller Bot!</b>\n\n💫 Лучшие Stripe аккаунты здесь.\n🎲 Используй меню ниже:", reply_markup=kb_main(), parse_mode="HTML")
+    await message.answer_photo(IMG_MAIN, caption="""🎉 Добро пожаловать в Orion Seller Bot! ✨
+🌟 Давно хотел приобрести качественные Stripe аккаунты с балансом?
+💫 Тебе определенно к нам! ⭐️
+🎲 Ниже располагается меню, ознакамливайся!
+───────────────────""", reply_markup=kb_main(), parse_mode="HTML")
 
 @dp.callback_query(F.data == "back_to_main")
 async def back_main(call: types.CallbackQuery, state: FSMContext):
     await state.clear()
-    await call.message.edit_media(InputMediaPhoto(media=IMG_MAIN, caption="🎉 <b>Главное меню Orion Seller</b>"), reply_markup=kb_main())
+    await call.message.edit_media(InputMediaPhoto(media=IMG_MAIN, caption="""🎉 Добро пожаловать в Orion Seller Bot! ✨
+🌟 Давно хотел приобрести качественные Stripe аккаунты с балансом?
+💫 Тебе определенно к нам! ⭐️
+🎲 Ниже располагается меню, ознакамливайся!
+───────────────────"""), reply_markup=kb_main())
 
 # 7. РАЗДЕЛ ПОКУПКИ
 @dp.callback_query(F.data == "buy")
@@ -88,7 +144,21 @@ async def buy_packs(call: types.CallbackQuery):
     packs = [1, 5, 10, 20, 30, 50]
     buttons = [[InlineKeyboardButton(text=f"💎 Пак: {p} шт.", callback_data=f"order_{p}")] for p in packs]
     buttons.append([InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_main")])
-    await call.message.edit_media(InputMediaPhoto(media=IMG_BUY, caption="🛒 <b>Выбери количество аккаунтов:</b>\n\n1-20 шт → 10$\n21-50 шт → 9$"), reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons))
+    await call.message.edit_media(InputMediaPhoto(media=IMG_BUY, caption="""🛒 Шаг 1 из 3... Выбор количества для покупки
+
+🌟 Решил купить аккаунты? Ты на верном пути! ✈️
+
+🎯 Наши преимущества:
+✅ Гарантия возврата в случаи невалидности 🔮
+✅ Платежные системы высшего уровня 💾
+✅ Удобные способы оплаты 📥
+✅ Быстрая тех поддержка 📞
+
+💎 Прайс лист на аккаунты:
+💎 1-20 шт → 10$ за аккаунт
+🚀 21-50 шт → 9$ за аккаунт
+
+🎯 Выбери уже готовый пак!"""), reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons))
 
 @dp.callback_query(F.data.startswith("order_"))
 async def choose_pay(call: types.CallbackQuery, state: FSMContext):
@@ -97,7 +167,7 @@ async def choose_pay(call: types.CallbackQuery, state: FSMContext):
     await state.update_data(qty=qty, price=price)
     
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="💳 Картой (в ЛС)", url="https://t.me/orion_seller")],
+        [InlineKeyboardButton(text="💳 Оплата картой", url="https://t.me/orion_seller")],
         [InlineKeyboardButton(text="₿ Криптовалютой", callback_data="pay_crypto")],
         [InlineKeyboardButton(text="⬅️ Назад", callback_data="buy")]
     ])
@@ -171,7 +241,14 @@ async def view_profile(call: types.CallbackQuery):
 
 @dp.callback_query(F.data == "support")
 async def view_support(call: types.CallbackQuery):
-    await call.message.edit_media(InputMediaPhoto(media=IMG_SUPPORT, caption="🆘 <b>Поддержка Orion Team</b>\n\nМенеджер: @orion_seller\nПиши по любым вопросам!"), 
+    await call.message.edit_media(InputMediaPhoto(media=IMG_SUPPORT, caption="""🛎️ Нужна помощь? Обращайся правильно!
+
+🔹 Напиши твою проблему нам !
+🔹 Менеджер поддержки: @orion_seller
+
+📌 Правила обращения:
+✅ Будь вежлив и точен
+✅ Не спамь"""), 
                                   reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="✉️ Написать", url="https://t.me/orion_seller")],[InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_main")]]))
 
 @dp.callback_query(F.data == "ref")
@@ -181,6 +258,9 @@ async def view_ref(call: types.CallbackQuery):
 
 # 10. ЗАПУСК
 async def main():
+
+    # Внутри async def main():
+    await set_main_menu(bot)
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
 
