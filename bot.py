@@ -452,7 +452,7 @@ async def back(call: types.CallbackQuery):
 💫 Тебе определенно к нам! ⭐️
 🎲 Ниже располагается меню, ознакамливайся!
 ───────────────────""", reply_markup=main_menu())
-@dp.callback_query_handler(lambda c: c.data == "main_menu")
+@dp.callback_query(lambda c: c.data == "main_menu")
 async def back_to_menu(call: types.CallbackQuery):
     await call.answer()
 
