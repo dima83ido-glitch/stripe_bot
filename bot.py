@@ -1,5 +1,4 @@
 from keep_alive import keep_alive
-
 from aiogram.types import InputMediaPhoto
 import logging
 import asyncio
@@ -74,7 +73,8 @@ def generate_code():
 
 # ====== КРИПТА ТЕКСТ ======
 crypto_text = (
-    "💳 Оплата криптовалютой:\n\n"
+    "💳 Реквизиты для оплаты (Криптовалюта):
+\n\n"
 
     "USDT (TRC20):\n"
     "TGTSyUEGaK7GAkpACNDi46x47zvr5y1VuX\n\n"
@@ -104,7 +104,7 @@ def main_menu():
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🛒 Купить аккаунты", callback_data="buy")],
         [InlineKeyboardButton(text="🆘 Поддержка", callback_data="support")],
-        [InlineKeyboardButton(text="🛒 Реферальная система", callback_data="ref")],
+        [InlineKeyboardButton(text="💰 Реферальная система", callback_data="ref")],
         [InlineKeyboardButton(text="👤 Профиль", callback_data="profile")]
     ])
     return kb
@@ -216,11 +216,11 @@ async def profile_handler(call: types.CallbackQuery):
 
 # ====== ЦЕНА ======
 def get_price(qty):
-    if 1 <= qty <= 20:
+    if 1 <= qty <= 10:
         return qty * 10
-    elif 21 <= qty <= 30:
+    elif 11 <= qty <= 20:
         return qty * 9
-    elif 31 <= qty <= 50:
+    elif 21 <= qty <= 30:
         return qty * 8
 
 
@@ -247,9 +247,22 @@ async def buy_handler(call: types.CallbackQuery, state: FSMContext):
     new_media = InputMediaPhoto(
         media="https://i.postimg.cc/wT8ygtJR/photo-2026-05-03-14-34-29.jpg", 
         caption=(
-            "💳 <b>₴₮ɌƗ₱Ɇ ₴ⱧØ₱ | ВЫБОР ПАКЕТА</b>\n\n"
-            "Выбери количество аккаунтов для покупки.\n"
-            "<i>Чем больше пак, тем выгоднее цена!</i>"
+            """🛒 Шаг 1 из 3... Выбор количества для покупки
+
+🌟 Решил купить аккаунты? Ты на верном пути! ✈️
+
+🎯 Наши преимущества:
+✅ Гарантия возврата в случаи невалидности 🔮
+✅ Платежные системы высшего уровня 💾
+✅ Удобные способы оплаты 📥
+✅ Быстрая тех поддержка 📞
+
+💎 Прайс лист на аккаунты:
+💎 1-20 шт → 10$ за аккаунт
+🚀 21-30 шт → 9$ за аккаунт
+🔥 31-50 шт → 8$ за аккаунт
+
+🎯 Выбери готовый пак или укажи свое количество!"""
         ),
         parse_mode="HTML"
     )
@@ -279,8 +292,8 @@ async def pack_handler(call: types.CallbackQuery, state: FSMContext):
     )
 
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="💳 Получить реквизиты", url="https://t.me/dmitryN1")],
-        [InlineKeyboardButton(text="₿ Оплата криптой", callback_data=f"crypto_{qty}")],
+        [InlineKeyboardButton(text="💳 Получить реквизиты", url="https://t.me/orion_seller")],
+        [InlineKeyboardButton(text="₿ Оплата криптовалютой", callback_data=f"crypto_{qty}")],
         [InlineKeyboardButton(text="⬅️ Назад к пакам", callback_data="buy")]
     ])
 
@@ -446,19 +459,24 @@ async def ref_handler(call: types.CallbackQuery):
 @dp.callback_query(lambda c: c.data == "back")
 async def back(call: types.CallbackQuery):
     await call.answer()
-    # Убедись, что функция main_menu() тоже возвращает объект InlineKeyboardMarkup новой версии
-    await call.message.edit_caption(caption="""🎉 Добро пожаловать в Orion Seller Bot! ✨
-🌟 Давно хотел приобрести качественные Stripe аккаунты с балансом?
-💫 Тебе определенно к нам! ⭐️
-🎲 Ниже располагается меню, ознакамливайся!
-───────────────────""", reply_markup=main_menu())
-@dp.callback_query(lambda c: c.data == "main_menu")
-async def back_to_menu(call: types.CallbackQuery):
-    await call.answer()
-
-    await call.message.edit_caption(
-        "🏠 Главное меню",
+    
+    # 1. Создаем объект медиа с НОВОЙ картинкой и текстом
+    new_media = InputMediaPhoto(
+        media="https://i.postimg.cc/TYVPYxDW/photo-2026-05-03-14-34-19.jpg", 
+        caption=(
+            "🎉 <b>Добро пожаловать в Orion Seller Bot!</b> ✨\n"
+            "🌟 Давно хотел приобрести качественные Stripe аккаунты с балансом?\n"
+            "💫 Тебе определенно к нам! ⭐\n"
+            "🎲 Ниже располагается меню, ознакамливайся!"
+        ),
+        parse_mode="HTML"
+    )
+    
+    # 2. Меняем всё сообщение целиком (фото + текст + кнопки)
+    await call.message.edit_media(
+        media=new_media,
         reply_markup=main_menu()
+    )
     )
 # Тут все твои функции (профиль, рефка, поддержка и т.д.)
 
