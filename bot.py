@@ -236,20 +236,34 @@ async def send_product(message: types.Message, state: FSMContext):
 async def view_profile(call: types.CallbackQuery):
     cursor.execute("SELECT deals, bought_items, spent FROM users WHERE user_id = ?", (call.from_user.id,))
     res = cursor.fetchone()
-    text = f"👤 <b>Профиль:</b>\n🆔 ID: <code>{call.from_user.id}</code>\n🤝 Сделок: {res[0]}\n🛒 Куплено: {res[1]} шт.\n💳 Потрачено: {res[2]}$", parse_mode="HTML"
-    await call.message.edit_media(InputMediaPhoto(media=IMG_PROFILE, caption=text), reply_markup=kb_back())
+    
+    # Текст оставляем как был, но без parse_mode внутри переменной
+    text = f"👤 <b>Профиль:</b>\n🆔 ID: <code>{call.from_user.id}</code>\n🤝 Сделок: {res[0]}\n🛒 Куплено: {res[1]} шт.\n💳 Потрачено: {res[2]}$"
+    
+    # Теперь передаем parse_mode правильно — внутрь InputMediaPhoto
+    await call.message.edit_media(
+        media=InputMediaPhoto(
+            media=IMG_PROFILE, 
+            caption=text, 
+            parse_mode="HTML"
+        ), 
+        reply_markup=kb_back()
+    )
 
 @dp.callback_query(F.data == "support")
 async def view_support(call: types.CallbackQuery):
-    await call.message.edit_media(InputMediaPhoto(media=IMG_SUPPORT, caption="""🛎️ Нужна помощь? Обращайся правильно!
-
-🔹 Напиши твою проблему нам !
-🔹 Менеджер поддержки: @orion_seller
-
-📌 Правила обращения:
-✅ Будь вежлив и точен
-✅ Не спамь"""), 
-                                  reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="✉️ Написать", url="https://t.me/orion_seller")],[InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_main")]]))
+    # Тут тоже добавил parse_mode="HTML", чтобы твои жирные шрифты работали
+    await call.message.edit_media(
+        media=InputMediaPhoto(
+            media=IMG_SUPPORT, 
+            caption="""🛎️ <b>Нужна помощь? Обращайся правильно!</b>\n\n🔹 Напиши твою проблему нам !\n🔹 Менеджер поддержки: @orion_seller\n\n📌 <b>Правила обращения:</b>\n✅ Будь вежлив и точен\n✅ Не спамь""",
+            parse_mode="HTML"
+        ), 
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="✉️ Написать", url="https://t.me/orion_seller")],
+            [InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_main")]
+        ])
+    )
 
 @dp.callback_query(F.data == "ref")
 async def view_ref(call: types.CallbackQuery):
@@ -277,6 +291,6 @@ async def main():
         print(f"⚠️ Критическая ошибка при работе: {e}")
     finally:
         await bot.session.close()
-        
+
 if __name__ == "__main__":
     asyncio.run(main())
