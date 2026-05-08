@@ -171,7 +171,7 @@ async def choose_pay(call: types.CallbackQuery, state: FSMContext):
         [InlineKeyboardButton(text="₿ Криптовалютой", callback_data="pay_crypto")],
         [InlineKeyboardButton(text="⬅️ Назад", callback_data="buy")]
     ])
-    await call.message.edit_media(InputMediaPhoto(media=IMG_PAY, caption=f"📦 <b>Заказ:</b> {qty} шт.\n💰 <b>Итого:</b> {price}$"), reply_markup=kb)
+    await call.message.edit_media(InputMediaPhoto(media=IMG_PAY, caption=f"📦 Заказ: {qty} шт.\n💰 Итого: {price}$"), reply_markup=kb)
 
 @dp.callback_query(F.data == "pay_crypto")
 async def pay_crypto(call: types.CallbackQuery):
@@ -184,7 +184,7 @@ async def pay_crypto(call: types.CallbackQuery):
 @dp.callback_query(F.data == "confirm_pay")
 async def wait_scr(call: types.CallbackQuery, state: FSMContext):
     await state.set_state(ShopStates.waiting_for_screenshot)
-    await call.message.edit_caption(caption="📸 <b>Пришлите скриншот чека оплаты в этот чат:</b>", reply_markup=kb_back())
+    await call.message.edit_caption(caption="📸 Пришлите скриншот чека оплаты в этот чат:", reply_markup=kb_back())
 
 # 8. ОБРАБОТКА СКРИНШОТА И АДМИНКА
 @dp.message(ShopStates.waiting_for_screenshot, F.photo)
@@ -192,7 +192,7 @@ async def get_screenshot(message: types.Message, state: FSMContext):
     data = await state.get_data()
     qty, price = data.get('qty'), data.get('price')
     
-    await message.answer("✅ <b>Чек принят!</b> Ожидайте проверки админом.", parse_mode="HTML")
+    await message.answer("<b>✅ Чек принят!</b> Ожидайте проверки админом.", parse_mode="HTML")
     
     kb_adm = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="✅ Одобрить", callback_data=f"adm_ok_{message.from_user.id}_{qty}_{price}")],
@@ -212,9 +212,9 @@ async def admin_action(call: types.CallbackQuery, state: FSMContext):
         qty, price = int(params[3]), int(params[4])
         await state.update_data(target=user_id, q=qty, p=price)
         await state.set_state(ShopStates.waiting_for_product_data)
-        await call.message.answer(f"⌨️ <b>Введи товар (данные аккаунтов) для {user_id}:</b>")
+        await call.message.answer(f"⌨️ <b>Введи товар (данные аккаунтов) для {user_id}:</b>", parse_mode="HTML")
     else:
-        await bot.send_message(user_id, "❌ <b>Ваша оплата отклонена.</b> Свяжитесь с поддержкой.")
+        await bot.send_message(user_id, "❌ <b>Ваша оплата отклонена.</b> Свяжитесь с поддержкой.", parse_mode="HTML")
         await call.message.edit_caption(caption=call.message.caption + "\n\n❌ ОТКЛОНЕНО")
     await call.answer()
 
@@ -236,7 +236,7 @@ async def send_product(message: types.Message, state: FSMContext):
 async def view_profile(call: types.CallbackQuery):
     cursor.execute("SELECT deals, bought_items, spent FROM users WHERE user_id = ?", (call.from_user.id,))
     res = cursor.fetchone()
-    text = f"👤 <b>Профиль:</b>\n🆔 ID: <code>{call.from_user.id}</code>\n🤝 Сделок: {res[0]}\n🛒 Куплено: {res[1]} шт.\n💳 Потрачено: {res[2]}$"
+    text = f"👤 <b>Профиль:</b>\n🆔 ID: <code>{call.from_user.id}</code>\n🤝 Сделок: {res[0]}\n🛒 Куплено: {res[1]} шт.\n💳 Потрачено: {res[2]}$", parse_mode="HTML"
     await call.message.edit_media(InputMediaPhoto(media=IMG_PROFILE, caption=text), reply_markup=kb_back())
 
 @dp.callback_query(F.data == "support")
@@ -258,11 +258,25 @@ async def view_ref(call: types.CallbackQuery):
 
 # 10. ЗАПУСК
 async def main():
+    print("🚀 ORION TEAM BOT ЗАПУСКАЕТСЯ...")
 
-    # Внутри async def main():
-    await set_main_menu(bot)
+    # Настраиваем кнопку «Меню» перед запуском опроса
+    try:
+        await set_main_menu(bot)
+        print("✅ Кнопка меню успешно установлена")
+    except Exception as e:
+        print(f"❌ Ошибка при установке меню: {e}")
+
+    # Удаляем старые сообщения, которые накопились, пока бот был выключен
     await bot.delete_webhook(drop_pending_updates=True)
-    await dp.start_polling(bot)
 
+    # Запускаем бесконечный цикл работы бота
+    try:
+        await dp.start_polling(bot)
+    except Exception as e:
+        print(f"⚠️ Критическая ошибка при работе: {e}")
+    finally:
+        await bot.session.close()
+        
 if __name__ == "__main__":
     asyncio.run(main())
